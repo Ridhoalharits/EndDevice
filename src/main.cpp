@@ -24,7 +24,7 @@ TinyGPSPlus gps;
 //interval setup 
 
 const unsigned long interval = 1000;  
-const unsigned long interval_off = 1000;   // 10 s interval to send message
+const unsigned long interval_off = 60000;   // 10 s interval to send message
 unsigned long previousMillis = 0;  // will store last time message sent
 
 
@@ -60,6 +60,43 @@ void buzzerBlink(){
     delay(1000);
 }
 
+void waitForValidGPS() {
+  unsigned long gpsTimeout = millis();
+  const unsigned long timeoutPeriod = 30000;  // 30 seconds timeout
+  digitalWrite(gpsPower,HIGH);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Waiting for GPS");
+
+  while (!gps.location.isValid()) {
+    while (neogps.available()) {
+      gps.encode(neogps.read());
+    }
+
+    if (millis() - gpsTimeout > timeoutPeriod) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("GPS Timeout");
+      Serial.println("GPS fix not acquired. Timeout.");
+      return;
+    }
+
+    lcd.setCursor(0, 1);
+    lcd.print("Invalid GPS");
+    delay(1000);  // Update every second
+  }
+  
+  lcd.clear();
+  lcd.setCursor(0, 1);
+  lcd.print("GPS Acquired");
+  getLat = gps.location.lat();
+  getLon = gps.location.lng();
+  lcd.setCursor(0, 1);
+  lcd.print(getLat);
+  digitalWrite(gpsPower,LOW);
+}
+
 
 void setup() {
 
@@ -67,7 +104,7 @@ void setup() {
   pinMode(led, OUTPUT);
   pinMode(buzzer,OUTPUT);
   pinMode(gpsPower,OUTPUT);
-  digitalWrite(gpsPower,HIGH);  
+  // digitalWrite(gpsPower,HIGH);
   Serial.begin(115200); //untuk memulai sebuah serial komunikasi => 9600/115200 --> Bebas lo mau pake yang mana
   neogps.begin(9600, SERIAL_8N1, RXD2, TXD2); // memulai komunikasi dengan GPS Module 
   // if (!lora.init()) {
@@ -87,7 +124,7 @@ void setup() {
 
 //LoRaWAN Setup
   lora.setDeviceClass(CLASS_A);
-  lora.setDataRate(SF7BW125);
+  lora.setDataRate(SF12BW125);
   lora.setFramePortTx(5);
   lora.setChannel(MULTI);
   lora.setTxPower(15);
@@ -126,7 +163,9 @@ void loop(){
   if (data == 1){
       digitalWrite(led,HIGH);
     // state awal di pencet
-    // digitalWrite(gpsPower,HIGH);
+    digitalWrite(gpsPower,HIGH);
+    setCpuFrequencyMhz(240);
+
     // lcd.backlight();
     // lcd.setCursor(0, 0);
     // lcd.print("Lat: ");
@@ -178,6 +217,7 @@ void loop(){
   // Check Lora RX
   lora.update();
   recvStatus = lora.readDataByte(outStr);
+    Serial.println(recvStatus);
   if (recvStatus) {
     newmessage = true;
     int counter = 0;
@@ -231,20 +271,24 @@ void loop(){
   else{
     warning=0;
     digitalWrite(led,LOW);
-    // lcd.noBacklight();
+    lcd.noBacklight();
+    setCpuFrequencyMhz(80);
     // lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Safe     ");
     //turn off the power
-    // digitalWrite(gpsPower,LOW);
+    digitalWrite(gpsPower,LOW);
     // Serial.println(data);
     // digitalWrite(led,LOW);
     // algoritma untuk bangun 3 menit untuk send data
     if (millis() - previousMillis > interval_off) {
     previousMillis = millis();
+    waitForValidGPS();
     digitalWrite(buzzer,HIGH);
     delay(500);
     digitalWrite(buzzer,LOW);
+
+
   
     String latitude = String(getLat, 8);
     String longitude = String(getLon, 8);
@@ -323,8 +367,10 @@ void loop(){
       Serial.print(F("Freq: "));    Serial.println(freq);Serial.println(" ");
     }
   }
+
   }
 }
+
 
 /* Cek LCD and GPS*/
 // TinyGPSPlus gps;
